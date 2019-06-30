@@ -24,6 +24,12 @@ class SAModel(object):
         self.model = None
         self.vocabulary = None
         self.vectorizer = None
+    
+    def applyFE(self, text):
+        """This method will combine the negation with the words
+        Will result in a bigger vocabulary but with less bias
+        """
+        return text.replace('n\'t', 'not').replace(' not ', ' not')
 
     def loadOrTrain(self):
         None
