@@ -1,2 +1,4 @@
 # Inore configuration Folder
 .vs/
+*.pyc
+.vscode/settings.json
