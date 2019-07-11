@@ -7,9 +7,6 @@ from nltk.corpus import stopwords
 from nltk.corpus import stopwords
 from datetime import datetime
 
-import build_event_browser
-import detect_events
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -27,9 +24,11 @@ sns.set_style('whitegrid')
 wordnet_lemmatizer = WordNetLemmatizer()
 default_stopwords = stopwords.words('english') # or any other list of your choice
 
-DATASET_PATH = 'DataSample/S140SampleED.csv'
-CLEANED_DATASET_PATH = 'DataSample/S140SampleEDCleaned.csv'
-TOPIC_FILE = 'DataSample/S140SampleEDTopics.csv'
+currentDir = os.getcwd()
+
+DATASET_PATH = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleED.csv')
+CLEANED_DATASET_PATH = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleEDCleaned.csv')
+TOPIC_FILE = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleEDTopics.csv')
 
 class EDMethod(object):    
     def __init__(self, numberOfTopics = 10, numberOfWords = 5, datasetPath = DATASET_PATH, cleanedDatasetPath = CLEANED_DATASET_PATH):
@@ -115,8 +114,6 @@ class EDMethod(object):
         None
 
 class OLDA(EDMethod):
-    
-
     def trainOLDA(self):
         papers = self.readData()
 
@@ -214,6 +211,25 @@ class OLDA(EDMethod):
                 '\'' + str(event_end.get(topic, 'NULL')) +'\'',
                 '\'' + str(topic) +'\''])
 
-if __name__ == "__main__":
+class MABED(EDMethod):
+    def run(self):
+        print('Gathering Data...')
+        self.readData()
+        currentDir = os.getcwd()
+
+        os.chdir(currentDir + '\\ED\\pyMABED\\')
+
+        print('Starting MABED')
+        os.system('python detect_events.py ' + self.cleanedDataset + ' ' + str(self.numberOfTopics) + ' --o mabed.out --sep ,')
+
+        print('Showing Results')
+        os.system('python build_event_browser.py mabed.out')
+
+        os.chdir(currentDir)
+        
+def sampleRun():
+    mabed_dample = MABED(numberOfTopics=10, numberOfWords=5)
+    mabed_dample.run()
+
     olda_sample = OLDA(numberOfTopics=10, numberOfWords=5)
     olda_sample.run()

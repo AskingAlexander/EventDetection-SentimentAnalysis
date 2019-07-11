@@ -2,3 +2,6 @@
 .vs/
 *.pyc
 .vscode/settings.json
+
+# Ignore the pyMABED Folder
+ED/pyMABED

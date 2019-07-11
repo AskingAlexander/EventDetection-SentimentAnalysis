@@ -160,26 +160,33 @@ class SVMModel(SAModel):
         tknzr = TweetTokenizer()
         return tknzr.tokenize(text)
 
+    def loadVocabulary(self):
+        model_data = joblib.load(self.name)
+
+        print('Could not load ' + self.name)
+        
+        savedModel = model_data._final_estimator
+        vocabulary = model_data.named_steps['countvectorizer'].vocabulary_
+        
+        print('SVM: Loaded Model and Vocabulary')
+        
+        self.model = savedModel
+        self.vocabulary = vocabulary
+        self.vectorizer = CountVectorizer(
+            vocabulary = vocabulary,
+            analyzer = 'word',
+            tokenizer = self.tokenize,
+            lowercase = True,
+            ngram_range=(1, 1))
+
     def loadOrTrain(self, trainPath = ''):
         savedModel = None
         vocabulary = None
 
         try:
-            model_data = joblib.load(self.name)
-
-            savedModel = model_data._final_estimator
-            vocabulary = model_data.named_steps['countvectorizer'].vocabulary_
-
-            print('SVM: Loaded Model and Vocabulary')
-
-            self.model = savedModel
-            self.vocabulary = vocabulary            
-            self.vectorizer = CountVectorizer(
-                vocabulary = vocabulary,
-                analyzer = 'word',
-                tokenizer = self.tokenize,
-                lowercase = True,
-                ngram_range=(1, 1))
+            self.loadVocabulary()
+            savedModel = self.model
+            vocabulary = self.vocabulary
         except:
             vocabulary = None
             savedModel = None
@@ -187,7 +194,7 @@ class SVMModel(SAModel):
             if (trainPath == ''):
                 raise Exception('SVM: Could not load model or vocabulary and no training path is specified')
 
-        if vocabulary is None:
+        if (vocabulary is None) or (savedModel is None):
             dataset = self.readFromCSV(trainPath)
             print('SVM: Preparing Setup')
 
@@ -210,9 +217,10 @@ class SVMModel(SAModel):
             print('SVM: Train Starts')
             grid_svm.fit(dataset['text'], dataset['label'])
             print('SVM: Train Ended')
-            
-            self.model = grid_svm.best_estimator_
-            joblib.dump( self.model, self.name, compress = 1)
+
+            joblib.dump(grid_svm.best_estimator_, self.name, compress = 1)
+            self.loadVocabulary()
+
 
 def sampleRun():
     trainSamplePath = 'DataSample\\S140SampleTrain.csv'
@@ -231,6 +239,3 @@ def sampleRun():
 
     lr.scoreModel(lr_predicted, testDataset['label'].values)
     svm.scoreModel(svm_predicted, testDataset['label'].values)
-
-if __name__ == "__main__":
-    sampleRun()
