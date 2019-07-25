@@ -8,3 +8,7 @@ This is the final step of our journey:
  5. After that we can aggregate the results and draw some conclusions
 
 This was written in C# as it runs way faster in a compiled program rather than on python.
+
+
+## File formats
+In order for the C# main program to work without any modification you must follow the same file format as the ones provided in 'Datasets' folder do. 

@@ -10,5 +10,8 @@ Sample run for SA, it will run both models against the sample files:
 Sample run for ED, it will run both methods against the sample files:
 ```python main.py --taskType ED```
 
+## SA over ED
+In order to run Sentiment Analysis over Event Detection you need to run the main from ```ResultAggregation/Program.cs``` and follow the instructions from the README. (It will need to have both the ED and SA results before running)
+
 ## Prerequisites:
 Read the SA and ED READMEs.
