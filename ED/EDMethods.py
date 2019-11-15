@@ -217,13 +217,13 @@ class MABED(EDMethod):
         self.readData()
         currentDir = os.getcwd()
 
-        os.chdir(currentDir + '\\ED\\pyMABED\\')
+        os.chdir(os.path.join(currentDir, 'ED', 'pyMABED'))
 
         print('Starting MABED')
-        os.system('python detect_events.py ' + self.cleanedDataset + ' ' + str(self.numberOfTopics) + ' --o mabed.out --sep ,')
+        os.system('python3 detect_events.py ' + self.cleanedDataset + ' ' + str(self.numberOfTopics) + ' --o mabed.out --sep ,')
 
         print('Showing Results')
-        os.system('python build_event_browser.py mabed.out')
+        os.system('python3 build_event_browser.py mabed.out')
 
         os.chdir(currentDir)
         
