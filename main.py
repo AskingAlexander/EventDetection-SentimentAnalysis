@@ -53,13 +53,13 @@ if __name__ == '__main__':
 
                 modelsToUse = None
 
-                if args.modelTypeSA == 'BOTH':
+                if args.methodTypeED == 'BOTH':
                     modelsToUse = [olda, mabed]
                 else:
-                    if args.modelTypeSA == 'MABED':
+                    if args.methodTypeED == 'MABED':
                         modelsToUse = [mabed]
                     else:
-                        if args.modelTypeSA == 'OLDA':
+                        if args.methodTypeED == 'OLDA':
                             modelsToUse = [olda]
                         else:
                             print('No valid model type was provided. Use --help to see the proper models.')
