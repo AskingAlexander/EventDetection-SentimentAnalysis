@@ -1,9 +1,10 @@
 from sklearn.metrics import accuracy_score, roc_auc_score, average_precision_score, roc_curve, precision_recall_curve
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline, Pipeline
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
+from sklearn.naive_bayes import MultinomialNB
 from nltk.tokenize import TweetTokenizer
 from time import gmtime, strftime
 from inspect import signature
@@ -15,6 +16,7 @@ import numpy as np
 import pickle
 import joblib
 import csv
+import os
 
 class SAModel(object):
     def __init__(self, modelName = '', outputFileName = ''):
@@ -43,6 +45,26 @@ class SAModel(object):
 
     def textToFeatures(self, text):
         return self.vectorizer.transform(text)
+
+    def tokenize(self, text): 
+        tknzr = TweetTokenizer()
+        return tknzr.tokenize(text)
+
+    def loadVocabulary(self):
+        model_data = joblib.load(self.name)
+
+        print('Could not load ' + self.name)
+        
+        savedModel = model_data._final_estimator
+        vectorizer = model_data.named_steps['vect'] \
+            if ('vect' in model_data.named_steps) \
+            else model_data.named_steps['countvectorizer']
+        
+        print('SVM: Loaded Model and Vocabulary')
+        
+        self.model = savedModel
+        self.vectorizer = vectorizer
+        self.vocabulary = vectorizer.vocabulary_
 
     def predictData(self, toPredict):
         """This method will predict the given input
@@ -118,82 +140,82 @@ class SAModel(object):
 
         return data_frame
 
-class MultinomialNBModel(SAModel):
-    def loadOrTrain(self, trainPath = ''):
-        None
+class PipeLineModel(SAModel):
+    def __init__(self, modelName = '', outputFileName = '', chosenModel = None, params = None):
+        SAModel.__init__(self, modelName, outputFileName)
 
-class RidgeClassifierModel(SAModel):
-    def loadOrTrain(self, trainPath = ''):
-        None
+        self.ModelToTrain = chosenModel
+        self.PipelineParameters = params
 
-class LRModel(SAModel):
     def loadOrTrain(self, trainPath = ''):
         savedModel = None
         vocabulary = None
 
         try:
-            vocabulary = pickle.load(open(self.name + '.vocabulary', 'rb'))
-            print('LR: Loaded Vocabulary')
-
-            savedModel = pickle.load(open(self.name, 'rb'))
-            print('LR: Loaded Model')
-
-            self.model = savedModel
-            self.vocabulary = vocabulary            
-            self.vectorizer = CountVectorizer(
-                vocabulary = vocabulary,
-                analyzer = 'word',
-                lowercase = True)
+            self.loadVocabulary()
+            savedModel = self.model
+            vocabulary = self.vocabulary
         except:
             vocabulary = None
             savedModel = None
 
             if (trainPath == ''):
-                raise Exception('LR: Could not load model or vocabulary and no training path is specified') 
+                raise Exception(self.name + ': Could not load model or vocabulary and no training path is specified') 
 
-        if vocabulary is None:
+        if vocabulary == None:
             dataset = self.readFromCSV(trainPath)
-            print('LR: Preparing Vocabulary')
 
-            self.vectorizer = CountVectorizer(analyzer = 'word', lowercase = True)
-            features = self.vectorizer.fit_transform(dataset['text'].values)
-            self.vocabulary = self.vectorizer.get_feature_names()
-            pickle.dump(self.vocabulary, open(self.name + '.vocabulary', 'wb'))
-            print('LR: Saved Vocabulary')
-            
-            print('LR: Starting to Train...')
+            trainPipeline = Pipeline([
+                ('vect', CountVectorizer()), 
+                ('tfidf', TfidfTransformer()), 
+                ('clf', self.ModelToTrain)
+                ])
 
-            savedModel = LogisticRegression()
-            savedModel = savedModel.fit(X=features, y=dataset['label'])
-            
-            pickle.dump(savedModel, open(self.name, 'wb'))
-            print('LR: Saved Model')
-            self.model = savedModel
+            print(self.name + ': Preparing to train')
+            with np.errstate(divide='ignore'):
+                gridModel = GridSearchCV(trainPipeline, self.PipelineParameters, cv=10, scoring='roc_auc')
+                gridModel.fit(dataset['text'], dataset['label'])
 
-class SVMModel(SAModel):    
-    def tokenize(self, text): 
-        tknzr = TweetTokenizer()
-        return tknzr.tokenize(text)
+                print(self.name + ': Training Done')
+                joblib.dump(gridModel.best_estimator_, self.name, compress = 1)
+                self.loadVocabulary()
 
-    def loadVocabulary(self):
-        model_data = joblib.load(self.name)
+class MultinomialNBModel(PipeLineModel):
+    def __init__(self, modelName = '', outputFileName = ''):
+        PipeLineModel.__init__(self, modelName, outputFileName, 
+            chosenModel = MultinomialNB(),
+            params = {
+                'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
+                'tfidf__use_idf': (True, False),
+                'tfidf__norm': ('l1', 'l2'),
+                'clf__alpha': [1, 1e-1, 1e-2]
+            })
 
-        print('Could not load ' + self.name)
-        
-        savedModel = model_data._final_estimator
-        vocabulary = model_data.named_steps['countvectorizer'].vocabulary_
-        
-        print('SVM: Loaded Model and Vocabulary')
-        
-        self.model = savedModel
-        self.vocabulary = vocabulary
-        self.vectorizer = CountVectorizer(
-            vocabulary = vocabulary,
-            analyzer = 'word',
-            tokenizer = self.tokenize,
-            lowercase = True,
-            ngram_range=(1, 1))
+class RidgeClassifierModel(PipeLineModel):
+    def __init__(self, modelName = '', outputFileName = ''):
+        PipeLineModel.__init__(self, modelName, outputFileName, 
+            chosenModel = RidgeClassifier(),
+            params = {
+                'vect__ngram_range': [(1, 1), (1, 2)],
+                'tfidf__use_idf': [False],
+                'tfidf__norm': ('l1', 'l2'),
+                'clf__alpha': [10,1,0.1,0.01,0.001]
+            })
 
+class LRModel(PipeLineModel):
+    def __init__(self, modelName = '', outputFileName = ''):
+        PipeLineModel.__init__(self, modelName, outputFileName, 
+            chosenModel = LogisticRegression(),
+            params = {
+                'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
+                'tfidf__use_idf': (True, False),
+                'tfidf__norm': ('l1', 'l2'),
+                'clf__penalty' : ['l1', 'l2'],
+                'clf__C' : np.logspace(-4, 4, 20),
+                'clf__solver' : ['liblinear']
+            })
+
+class SVMModel(SAModel):
     def loadOrTrain(self, trainPath = ''):
         savedModel = None
         vocabulary = None
@@ -236,21 +258,23 @@ class SVMModel(SAModel):
             joblib.dump(grid_svm.best_estimator_, self.name, compress = 1)
             self.loadVocabulary()
 
-
 def sampleRun():
-    trainSamplePath = 'DataSample\\S140SampleTrain.csv'
-    testSamplePath = 'DataSample\\S140SampleTest.csv'
+    trainSamplePath = os.path.join('DataSample', 'S140SampleTrain.csv')
+    testSamplePath = os.path.join('DataSample', 'S140SampleTest.csv')
 
     lr = LRModel('SampleLR', 'SampleLROutput') 
     svm = SVMModel('SampleSVM', 'SampleSVMOutput')
-    
-    lr.loadOrTrain(trainSamplePath)
-    svm.loadOrTrain(trainSamplePath)
-    
+    nb = MultinomialNBModel('SampleNB', 'SampleNBOutput')
+    rc = MultinomialNBModel('SampleRC', 'SampleRCOutput')
+
     testDataset = SAModel().readFromCSV(testSamplePath)
 
-    lr_predicted = lr.predictData(testDataset['text'].values)
-    svm_predicted = svm.predictData(testDataset['text'].values)
+    for model in [lr, nb, rc, svm]:
+        model.loadOrTrain(trainSamplePath)
 
-    lr.scoreModel(lr_predicted, testDataset['label'].values)
-    svm.scoreModel(svm_predicted, testDataset['label'].values)
+        predicted = model.predictData(testDataset['text'].values)
+
+        model.scoreModel(predicted, testDataset['label'].values)
+
+if __name__ == '__main__':
+    sampleRun()
