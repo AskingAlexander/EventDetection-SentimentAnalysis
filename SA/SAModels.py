@@ -29,7 +29,14 @@ class SAModel(object):
         """This method will combine the negation with the words
         Will result in a bigger vocabulary but with less bias
         """
-        return text.replace('n\'t', 'not').replace(' not ', ' not')
+        final_text = text.replace('cannot', 'can not')
+        final_text = text.replace('can’t', 'can not')
+        final_text = final_text.replace('won’t', 'will not')
+        final_text = final_text.replace('n\'t', ' not')
+        final_text = final_text.replace('n\'t', 'not')
+        final_text = final_text.replace(' not ', ' not')
+
+        return final_text
 
     def loadOrTrain(self):
         None
@@ -110,6 +117,14 @@ class SAModel(object):
         data_frame['label'] = data_frame['label'].map(lambda x: 1 if x == 'pos' else 0)
 
         return data_frame
+
+class MultinomialNBModel(SAModel):
+    def loadOrTrain(self, trainPath = ''):
+        None
+
+class RidgeClassifierModel(SAModel):
+    def loadOrTrain(self, trainPath = ''):
+        None
 
 class LRModel(SAModel):
     def loadOrTrain(self, trainPath = ''):
