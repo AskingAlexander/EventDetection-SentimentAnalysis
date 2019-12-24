@@ -173,7 +173,12 @@ class PipeLineModel(SAModel):
 
             print(self.name + ': Preparing to train')
             with np.errstate(divide='ignore'):
-                gridModel = GridSearchCV(trainPipeline, self.PipelineParameters, cv=10, scoring='roc_auc')
+                gridModel = GridSearchCV(trainPipeline, 
+                    self.PipelineParameters, 
+                    cv=10, 
+                    scoring='roc_auc',
+                    n_jobs = 7,
+                    verbose = 1000)
                 gridModel.fit(dataset['text'], dataset['label'])
 
                 print(self.name + ': Training Done')
