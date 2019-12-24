@@ -19,9 +19,11 @@ import csv
 import os
 
 class SAModel(object):
-    def __init__(self, modelName = '', outputFileName = ''):
+    def __init__(self, modelName = '', outputFileName = '', labelColumn = 'label'):
         self.name = modelName
         self.outputName = outputFileName
+
+        self.labelColumn = labelColumn
 
         self.model = None
         self.vocabulary = None
@@ -131,18 +133,23 @@ class SAModel(object):
             for to_write in data:
                 csv_writer.writerow(to_write)
                 
-    def readFromCSV(self, filePath,  encoding='ISO-8859-1'):
+    def readFromCSV(self, filePath, encoding='ISO-8859-1', alternateEncoding = 'utf-8'):
         """This method will read from a CSV file and return a dataframe
         Only the 'text' and 'label' columns will be taken in consideration
         """
-        data_frame = pd.read_csv(filePath, engine='python', encoding=encoding, error_bad_lines=False)
-        data_frame['label'] = data_frame['label'].map(lambda x: 1 if x == 'pos' else 0)
+        data_frame = None
+        try:
+            data_frame = pd.read_csv(filePath, engine='python', encoding=encoding, error_bad_lines=False)
+        except:
+            data_frame = pd.read_csv(filePath, engine='python', encoding=alternateEncoding, error_bad_lines=False)
+
+        data_frame[self.labelColumn] = data_frame[self.labelColumn].map(lambda x: 1 if x == 'pos' else 0)
 
         return data_frame
 
 class PipeLineModel(SAModel):
-    def __init__(self, modelName = '', outputFileName = '', chosenModel = None, params = None):
-        SAModel.__init__(self, modelName, outputFileName)
+    def __init__(self, modelName = '', outputFileName = '', labelColumn = 'label', chosenModel = None, params = None):
+        SAModel.__init__(self, modelName, outputFileName, labelColumn=labelColumn)
 
         self.ModelToTrain = chosenModel
         self.PipelineParameters = params
@@ -179,15 +186,16 @@ class PipeLineModel(SAModel):
                     scoring='roc_auc',
                     n_jobs = 7,
                     verbose = 1000)
-                gridModel.fit(dataset['text'], dataset['label'])
+                gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
                 print(self.name + ': Training Done')
                 joblib.dump(gridModel.best_estimator_, self.name, compress = 1)
                 self.loadVocabulary()
 
 class MultinomialNBModel(PipeLineModel):
-    def __init__(self, modelName = '', outputFileName = ''):
-        PipeLineModel.__init__(self, modelName, outputFileName, 
+    def __init__(self, modelName = '', outputFileName = '', labelColumn = 'label'):
+        PipeLineModel.__init__(self, modelName, outputFileName,
+            labelColumn=labelColumn,
             chosenModel = MultinomialNB(),
             params = {
                 'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
@@ -197,8 +205,9 @@ class MultinomialNBModel(PipeLineModel):
             })
 
 class RidgeClassifierModel(PipeLineModel):
-    def __init__(self, modelName = '', outputFileName = ''):
-        PipeLineModel.__init__(self, modelName, outputFileName, 
+    def __init__(self, modelName = '', outputFileName = '', labelColumn = 'label'):
+        PipeLineModel.__init__(self, modelName, outputFileName,
+            labelColumn=labelColumn, 
             chosenModel = RidgeClassifier(),
             params = {
                 'vect__ngram_range': [(1, 1), (1, 2)],
@@ -208,8 +217,9 @@ class RidgeClassifierModel(PipeLineModel):
             })
 
 class LRModel(PipeLineModel):
-    def __init__(self, modelName = '', outputFileName = ''):
-        PipeLineModel.__init__(self, modelName, outputFileName, 
+    def __init__(self, modelName = '', outputFileName = '', labelColumn = 'label'):
+        PipeLineModel.__init__(self, modelName, outputFileName,
+            labelColumn=labelColumn, 
             chosenModel = LogisticRegression(),
             params = {
                 'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
@@ -257,7 +267,7 @@ class SVMModel(SAModel):
                                     n_jobs=-1) 
 
             print('SVM: Train Starts')
-            grid_svm.fit(dataset['text'], dataset['label'])
+            grid_svm.fit(dataset['text'], dataset[self.labelColumn])
             print('SVM: Train Ended')
 
             joblib.dump(grid_svm.best_estimator_, self.name, compress = 1)
@@ -280,6 +290,25 @@ def sampleRun():
         predicted = model.predictData(testDataset['text'].values)
 
         model.scoreModel(predicted, testDataset['label'].values)
+
+def trueRun():
+    labelColumn = 'polarity'
+    for dataset in ['C1', 'C2', 'C3']:
+        trainSamplePath = os.path.join('Datasets', 'S140', dataset + 'Train.csv')
+        testSamplePath = os.path.join('Datasets', 'S140', dataset + 'Test.csv')
+
+        lr = LRModel(dataset + 'LR', dataset + 'LROutput', labelColumn=labelColumn)
+        nb = MultinomialNBModel(dataset + 'NB', dataset + 'NBOutput', labelColumn=labelColumn)
+        rc = MultinomialNBModel(dataset + 'RC', dataset + 'RCOutput', labelColumn=labelColumn)
+
+        testDataset = SAModel(labelColumn=labelColumn).readFromCSV(testSamplePath)
+
+        for model in [lr, nb, rc]:
+            model.loadOrTrain(trainSamplePath)
+
+            predicted = model.predictData(testDataset['text'].values)
+
+            model.scoreModel(predicted, testDataset[labelColumn].values)
 
 if __name__ == '__main__':
     sampleRun()
