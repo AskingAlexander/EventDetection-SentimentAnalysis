@@ -62,7 +62,7 @@ class SAModel(object):
             if ('vect' in model_data.named_steps) \
             else model_data.named_steps['countvectorizer']
         
-        print('SVM: Loaded Model and Vocabulary')
+        print(self.name + ': Loaded Model and Vocabulary')
         
         self.model = savedModel
         self.vectorizer = vectorizer
