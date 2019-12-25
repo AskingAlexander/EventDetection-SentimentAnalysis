@@ -182,10 +182,10 @@ class PipeLineModel(SAModel):
             with np.errstate(divide='ignore'):
                 gridModel = GridSearchCV(trainPipeline, 
                     self.PipelineParameters, 
-                    cv=10, 
+                    cv=4, 
                     scoring='roc_auc',
-                    n_jobs = 7,
-                    verbose = 1000)
+                    n_jobs = 6,
+                    verbose = 1)
                 gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
                 print(self.name + ': Training Done')
@@ -280,7 +280,7 @@ def sampleRun():
     lr = LRModel('SampleLR', 'SampleLROutput') 
     svm = SVMModel('SampleSVM', 'SampleSVMOutput')
     nb = MultinomialNBModel('SampleNB', 'SampleNBOutput')
-    rc = MultinomialNBModel('SampleRC', 'SampleRCOutput')
+    rc = RidgeClassifierModel('SampleRC', 'SampleRCOutput')
 
     testDataset = SAModel().readFromCSV(testSamplePath)
 
@@ -299,7 +299,7 @@ def trueRun():
 
         lr = LRModel(dataset + 'LR', dataset + 'LROutput', labelColumn=labelColumn)
         nb = MultinomialNBModel(dataset + 'NB', dataset + 'NBOutput', labelColumn=labelColumn)
-        rc = MultinomialNBModel(dataset + 'RC', dataset + 'RCOutput', labelColumn=labelColumn)
+        rc = RidgeClassifierModel(dataset + 'RC', dataset + 'RCOutput', labelColumn=labelColumn)
 
         testDataset = SAModel(labelColumn=labelColumn).readFromCSV(testSamplePath)
 
