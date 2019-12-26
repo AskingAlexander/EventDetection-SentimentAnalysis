@@ -4,7 +4,6 @@ from sklearn.decomposition import LatentDirichletAllocation as LDA
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-from nltk.corpus import stopwords
 from datetime import datetime
 
 import matplotlib.pyplot as plt
