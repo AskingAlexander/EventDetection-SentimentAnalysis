@@ -144,6 +144,7 @@ class SAModel(object):
             data_frame = pd.read_csv(filePath, engine='python', encoding=alternateEncoding, error_bad_lines=False)
 
         data_frame[self.labelColumn] = data_frame[self.labelColumn].map(lambda x: 1 if x == 'pos' else 0)
+        data_frame['text'] = data_frame['text'].map(lambda x : str(x))
 
         return data_frame
 
@@ -294,17 +295,17 @@ def sampleRun():
 def trueRun():
     labelColumn = 'polarity'
     for dataset in ['C1FE', 'C2FE', 'C3FE']:
-        trainSamplePath = os.path.join('Datasets', 'S140FE', dataset + 'Train.csv')
-        testSamplePath = os.path.join('Datasets', 'S140FE', dataset + 'Test.csv')
+        trainPath = os.path.join('Datasets', 'S140FE', dataset + 'Train.csv')
+        testPath = os.path.join('Datasets', 'S140FE', dataset + 'Test.csv')
 
         lr = LRModel(dataset + 'LR', dataset + 'LROutput', labelColumn=labelColumn)
         nb = MultinomialNBModel(dataset + 'NB', dataset + 'NBOutput', labelColumn=labelColumn)
         rc = RidgeClassifierModel(dataset + 'RC', dataset + 'RCOutput', labelColumn=labelColumn)
 
-        testDataset = SAModel(labelColumn=labelColumn).readFromCSV(testSamplePath)
+        testDataset = SAModel(labelColumn=labelColumn).readFromCSV(testPath)
 
         for model in [lr, nb, rc]:
-            model.loadOrTrain(trainSamplePath)
+            model.loadOrTrain(trainPath)
 
             predicted = model.predictData(testDataset['text'].values)
 

@@ -285,11 +285,12 @@ class PeakDetection(EDMethod):
         print('Generated Bins...')
 
         for (interval, listOfTweets) in  bins.items():
-            diff = interval[1] - interval[0]
+            (lowD, highD) = (interval[0] - interval[1])
+            diff = highD - lowD
             minutesBetween = self.getMinutesBetween(diff)
+            increment = float(minutesBetween / 100)
 
             dates = [date for (date, tweet) in listOfTweets]
-
             peaks, _ = find_peaks(dates)
 
             None
