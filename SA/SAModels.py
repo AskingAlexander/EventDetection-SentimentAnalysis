@@ -293,9 +293,9 @@ def sampleRun():
 
 def trueRun():
     labelColumn = 'polarity'
-    for dataset in ['C1', 'C2', 'C3']:
-        trainSamplePath = os.path.join('Datasets', 'S140', dataset + 'Train.csv')
-        testSamplePath = os.path.join('Datasets', 'S140', dataset + 'Test.csv')
+    for dataset in ['C1FE', 'C2FE', 'C3FE']:
+        trainSamplePath = os.path.join('Datasets', 'S140FE', dataset + 'Train.csv')
+        testSamplePath = os.path.join('Datasets', 'S140FE', dataset + 'Test.csv')
 
         lr = LRModel(dataset + 'LR', dataset + 'LROutput', labelColumn=labelColumn)
         nb = MultinomialNBModel(dataset + 'NB', dataset + 'NBOutput', labelColumn=labelColumn)
@@ -311,4 +311,4 @@ def trueRun():
             model.scoreModel(predicted, testDataset[labelColumn].values)
 
 if __name__ == '__main__':
-    sampleRun()
+    trueRun()

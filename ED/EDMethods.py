@@ -3,8 +3,9 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation as LDA
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.stem import WordNetLemmatizer
+from scipy.signal import find_peaks
 from nltk.corpus import stopwords
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -23,11 +24,11 @@ sns.set_style('whitegrid')
 wordnet_lemmatizer = WordNetLemmatizer()
 default_stopwords = stopwords.words('english') # or any other list of your choice
 
-currentDir = os.getcwd()
+DATASET_PATH = os.path.join('DataSample',  'S140SampleED.csv')
+CLEANED_DATASET_PATH = os.path.join('DataSample',  'S140SampleEDCleaned.csv')
+TOPIC_FILE = os.path.join('DataSample',  'S140SampleEDTopics.csv')
 
-DATASET_PATH = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleED.csv')
-CLEANED_DATASET_PATH = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleEDCleaned.csv')
-TOPIC_FILE = os.path.join(os.path.sep, currentDir, 'DataSample',  'S140SampleEDTopics.csv')
+S140_ED_FILE = os.path.join('Datasets', 'S140ED.csv')
 
 class EDMethod(object):    
     def __init__(self, numberOfTopics = 10, numberOfWords = 5, datasetPath = DATASET_PATH, cleanedDatasetPath = CLEANED_DATASET_PATH):
@@ -61,16 +62,16 @@ class EDMethod(object):
 
         return text
 
-    def readData(self):
+    def readData(self, datasetPath = CLEANED_DATASET_PATH):
         data = None
 
         try:
-            data = pd.read_csv(CLEANED_DATASET_PATH, engine='python', encoding='utf-8', error_bad_lines=False)
+            data = pd.read_csv(datasetPath, engine='python', encoding='utf-8', error_bad_lines=False)
         except:
             data = pd.read_csv(DATASET_PATH, engine='python', encoding='utf-8', error_bad_lines=False)
             data['text'] = data['text'].map(lambda x: self.cleanText(x))
 
-            data.to_csv(CLEANED_DATASET_PATH, sep=',', encoding='utf-8', index=False)
+            data.to_csv(datasetPath, sep=',', encoding='utf-8', index=False)
 
         return data
 
@@ -114,6 +115,7 @@ class EDMethod(object):
 
 class OLDA(EDMethod):
     def trainOLDA(self):
+        print('Gathering Data...')
         papers = self.readData()
 
         # Join the different processed titles together.
@@ -226,9 +228,80 @@ class MABED(EDMethod):
 
         os.chdir(currentDir)
         
+class PeakDetection(EDMethod):
+    def getHoursBetween(self, diff):
+        days, seconds = diff.days, diff.seconds
+        hours = days * 24 + seconds // 3600
+
+        return hours
+
+    def getMinutesBetween(self, diff):
+        days, seconds = diff.days, diff.seconds
+        minutes = days * 24 * 60 + seconds/60
+
+        return minutes
+
+    def generateBins(self, binCount):
+        tweets = self.dataset
+
+        minDate = tweets['Date'].min()
+        maxDate = tweets['Date'].max()
+
+        diff = maxDate - minDate
+
+        split = int(self.getHoursBetween(diff) / binCount)
+
+        bins = {}
+
+        for i in range(binCount - 1):
+            lDate = minDate + timedelta(hours=(i * split))
+            uDate = minDate + timedelta(hours=((i + 1) * split))
+
+            bins[(lDate, uDate)] = []
+        bins[(minDate + timedelta(hours=((binCount - 1) * split)), maxDate)] = []
+
+        for _, row in tweets.iterrows():
+            currentDate = row['Date']
+            diff = currentDate - minDate
+
+            binIndex = 0 if (split == 0) else int(self.getHoursBetween(diff)/split)
+
+            lDate = minDate + timedelta(hours=(binIndex * split))
+            uDate = minDate + timedelta(hours=((binIndex + 1) * split))
+
+            bins[(lDate, uDate)].append((currentDate, row['text']))
+
+        return bins
+
+    def run(self):
+        print('Running PeakDetection...')
+        print('Gathering Data...')
+        self.dataset = self.readData(datasetPath= S140_ED_FILE).head(100)
+
+        self.dataset['Date'] = self.dataset['Date'].map(lambda x: datetime.strptime(x, "%Y-%m-%d-%H-%M-%S"))
+        print('Gathered Data...')
+        
+        bins = self.generateBins(self.numberOfTopics)
+        print('Generated Bins...')
+
+        for (interval, listOfTweets) in  bins.items():
+            diff = interval[1] - interval[0]
+            minutesBetween = self.getMinutesBetween(diff)
+
+            dates = [date for (date, tweet) in listOfTweets]
+
+            peaks, _ = find_peaks(dates)
+
+            None
+
+
 def sampleRun():
-    mabed_dample = MABED(numberOfTopics=10, numberOfWords=5)
-    mabed_dample.run()
+    mabed_sample = MABED(numberOfTopics=10, numberOfWords=5)
+    mabed_sample.run()
 
     olda_sample = OLDA(numberOfTopics=10, numberOfWords=5)
     olda_sample.run()
+
+if __name__ == '__main__':
+    peakDetection = PeakDetection(numberOfTopics=10, numberOfWords=5)
+    peakDetection.run()
