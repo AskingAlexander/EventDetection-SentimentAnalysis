@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from sklearn.metrics import accuracy_score, roc_auc_score, average_precision_score, roc_curve, precision_recall_curve
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
@@ -185,7 +186,7 @@ class PipeLineModel(SAModel):
                     self.PipelineParameters, 
                     cv=4, 
                     scoring='roc_auc',
-                    n_jobs = 12,
+                    n_jobs = 30,
                     verbose = 1)
                 gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
@@ -265,7 +266,7 @@ class SVMModel(SAModel):
                                     param_grid = {'svc__C': [0.1]},
                                     scoring="roc_auc",
                                     verbose=1000,
-                                    n_jobs=-1) 
+                                    n_jobs=30) 
 
             print('SVM: Train Starts')
             grid_svm.fit(dataset['text'], dataset[self.labelColumn])
