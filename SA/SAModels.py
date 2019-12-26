@@ -185,7 +185,7 @@ class PipeLineModel(SAModel):
                     self.PipelineParameters, 
                     cv=4, 
                     scoring='roc_auc',
-                    n_jobs = -1,
+                    n_jobs = 12,
                     verbose = 1)
                 gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
