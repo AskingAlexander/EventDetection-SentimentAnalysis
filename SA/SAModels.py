@@ -186,7 +186,7 @@ class PipeLineModel(SAModel):
                     self.PipelineParameters, 
                     cv=4, 
                     scoring='roc_auc',
-                    n_jobs = 30,
+                    n_jobs = 6,
                     verbose = 1)
                 gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
@@ -200,7 +200,7 @@ class MultinomialNBModel(PipeLineModel):
             labelColumn=labelColumn,
             chosenModel = MultinomialNB(),
             params = {
-                'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
+                'vect__ngram_range': [(1, 2), (2, 2)],
                 'tfidf__use_idf': (True, False),
                 'tfidf__norm': ('l1', 'l2'),
                 'clf__alpha': [1, 1e-1, 1e-2]
@@ -212,7 +212,7 @@ class RidgeClassifierModel(PipeLineModel):
             labelColumn=labelColumn, 
             chosenModel = RidgeClassifier(),
             params = {
-                'vect__ngram_range': [(1, 1), (1, 2)],
+                'vect__ngram_range': [(1, 2)],
                 'tfidf__use_idf': [False],
                 'tfidf__norm': ('l1', 'l2'),
                 'clf__alpha': [10,1,0.1,0.01,0.001]
@@ -224,11 +224,11 @@ class LRModel(PipeLineModel):
             labelColumn=labelColumn, 
             chosenModel = LogisticRegression(),
             params = {
-                'vect__ngram_range': [(1, 1), (1, 2), (2, 2)],
+                'vect__ngram_range': [(1, 2), (2, 2)],
                 'tfidf__use_idf': (True, False),
                 'tfidf__norm': ('l1', 'l2'),
                 'clf__penalty' : ['l1', 'l2'],
-                'clf__C' : np.logspace(-4, 4, 20),
+                'clf__C' : np.logspace(-4, 4, 10),
                 'clf__solver' : ['liblinear']
             })
 
@@ -266,7 +266,7 @@ class SVMModel(SAModel):
                                     param_grid = {'svc__C': [0.1]},
                                     scoring="roc_auc",
                                     verbose=1000,
-                                    n_jobs=30) 
+                                    n_jobs=6) 
 
             print('SVM: Train Starts')
             grid_svm.fit(dataset['text'], dataset[self.labelColumn])
