@@ -186,8 +186,8 @@ class PipeLineModel(SAModel):
                     self.PipelineParameters, 
                     cv=4, 
                     scoring='roc_auc',
-                    n_jobs = 6,
-                    verbose = 1)
+                    n_jobs = 30,
+                    verbose = 10)
                 gridModel.fit(dataset['text'], dataset[self.labelColumn])
 
                 print(self.name + ': Training Done')
@@ -295,7 +295,7 @@ def sampleRun():
 
 def trueRun():
     labelColumn = 'polarity'
-    for dataset in ['C1FE', 'C2FE', 'C3FE']:
+    for dataset in ['C3FE']:
         trainPath = os.path.join('Datasets', 'S140FE', dataset + 'Train.csv')
         testPath = os.path.join('Datasets', 'S140FE', dataset + 'Test.csv')
 

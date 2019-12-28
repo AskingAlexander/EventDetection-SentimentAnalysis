@@ -288,7 +288,7 @@ class PeakDetection(EDMethod):
 
         diff = maxDate - minDate
 
-        split = int(math.ceil(self.getHoursBetween(diff) / binCount))
+        split = int(math.ceil(self.getHoursBetween(diff) / (binCount + 1)))
         bins = {}
 
         if (split == 0):
@@ -299,22 +299,24 @@ class PeakDetection(EDMethod):
 
             bins[(minDate, maxDate)] = currentBin
         else:
-            for i in range(binCount - 1):
+            maxBinIndex = binCount - 1
+            for i in range(maxBinIndex):
                 lDate = minDate + timedelta(hours=(i * split))
                 uDate = minDate + timedelta(hours=((i + 1) * split))
 
                 bins[(lDate, uDate)] = []
 
-            bins[(minDate + timedelta(hours=((binCount - 1) * split)), maxDate)] = []
+            lastBinLeft = minDate + timedelta(hours=((maxBinIndex) * split))
+            bins[(lastBinLeft, maxDate)] = []
 
             for _, row in tweets.iterrows():
                 currentDate = row['Date']
                 diff = currentDate - minDate
 
-                binIndex = 0 if (split == 0) else int(self.getHoursBetween(diff)/split)
+                binIndex = 0 if (split == 0) else min([int(math.floor(self.getHoursBetween(diff)/split)), maxBinIndex])
 
-                lDate = minDate + timedelta(hours=(binIndex * split))
-                uDate = minDate + timedelta(hours=((binIndex + 1) * split))
+                lDate = lastBinLeft if (binIndex == maxBinIndex) else (minDate + timedelta(hours=(binIndex * split)))
+                uDate = maxDate if (binIndex == maxBinIndex) else (minDate + timedelta(hours=((binIndex + 1) * split)))
 
                 bins[(lDate, uDate)].append((currentDate, row['text']))
 
@@ -392,7 +394,7 @@ class PeakDetection(EDMethod):
             popularTweets = []
             for peak in peaks:
                 (initialDate, tweet) = listOfTweets[peak]
-                popularTweets.append(tweet)
+                popularTweets.append(str(tweet))
 
                 left = peak - 1
                 right = peak + 1
@@ -407,7 +409,7 @@ class PeakDetection(EDMethod):
                     if minutesBetween > increment:
                         break
 
-                    popularTweets.append(tweet)
+                    popularTweets.append(str(tweet))
 
                 while right < maxIndex:
                     (currentDate, tweet) = listOfTweets[right]
@@ -419,9 +421,9 @@ class PeakDetection(EDMethod):
                     if minutesBetween > increment:
                         break
 
-                    popularTweets.append(tweet)
+                    popularTweets.append(str(tweet))
             
-            tfidf = TfidfVectorizer(stop_words=default_stopwords)
+            tfidf = TfidfVectorizer(stop_words=default_stopwords, max_features=50)
             response = tfidf.fit_transform(popularTweets)
 
             feature_array = np.array(tfidf.get_feature_names())
