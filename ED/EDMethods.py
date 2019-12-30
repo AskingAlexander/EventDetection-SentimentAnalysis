@@ -393,8 +393,7 @@ class PeakDetection(EDMethod):
 
             popularTweets = []
             for peak in peaks:
-                (initialDate, tweet) = listOfTweets[peak]
-                popularTweets.append(str(tweet))
+                initialDate = lowD + timedelta(minutes=(increment * peak))
 
                 left = peak - 1
                 right = peak + 1
