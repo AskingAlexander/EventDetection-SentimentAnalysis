@@ -287,8 +287,9 @@ class PeakDetection(EDMethod):
         maxDate = tweets['Date'].max()
 
         diff = maxDate - minDate
+        binCount += 1
 
-        split = int(math.ceil(self.getHoursBetween(diff) / (binCount + 1)))
+        split = int(math.ceil(self.getHoursBetween(diff) / binCount))
         bins = {}
 
         if (split == 0):
