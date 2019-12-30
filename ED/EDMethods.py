@@ -421,16 +421,20 @@ class PeakDetection(EDMethod):
                         break
 
                     popularTweets.append(str(tweet))
-            
-            tfidf = TfidfVectorizer(stop_words=default_stopwords, max_features=50)
-            response = tfidf.fit_transform(popularTweets)
 
-            feature_array = np.array(tfidf.get_feature_names())
-            tfidf_sorting = np.argsort(response.toarray()).flatten()[::-1]
+            if len(popularTweets) > 0:
+                try:
+                    tfidf = TfidfVectorizer(stop_words=default_stopwords, max_features=50)
+                    response = tfidf.fit_transform(popularTweets)
 
-            top_n = feature_array[tfidf_sorting[:self.numberOfWords]]
+                    feature_array = np.array(tfidf.get_feature_names())
+                    tfidf_sorting = np.argsort(response.toarray()).flatten()[::-1]
 
-            topics.append(' '.join(top_n.tolist()))
+                    top_n = feature_array[tfidf_sorting[:self.numberOfWords]]
+
+                    topics.append(' '.join(top_n.tolist()))
+                except:
+                    None
 
         return self.saveTopics(topics), self.dataset
 
