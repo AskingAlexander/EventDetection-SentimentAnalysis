@@ -19,8 +19,8 @@ pip install sklearn
 pip install seaborn
 pip install pandas
 pip install nltk
+pip install wordcloud
 
-import nltk
-nltk.download()
+python -m nltk.downloader stopwords
 
 ```
