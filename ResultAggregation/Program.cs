@@ -206,6 +206,7 @@ namespace SAoverED
             List<string> otherGenerators = labelGenerators
                 .Where(x => x != TRUE_LABELS_KEY)
                 .ToList();
+            int numberOfGenerators = topicGenerators.Count;
 
             Console.WriteLine("Aggregating...");
 
@@ -222,22 +223,23 @@ namespace SAoverED
                     rowBuilder.Append($"{predictions[labelGen][topic]},");
                 }
 
+                int index = 1;
+                string row = rowBuilder.ToString().TrimEnd(',');
                 foreach (string topicGen in topicGenerators)
                 {
-                    bool belongsTo = false;
+                    string previousCommas =  string.Concat(Enumerable.Repeat(",", index)) ;
+                    string remainingCommas = string.Concat(Enumerable.Repeat(",", numberOfGenerators - index));
+
                     foreach ((string topic, List<string> set) y in topics[topicGen])
                     {
                         if (y.set.Intersect(topicSet).Count() >=
                     MINIMAL_INTERSECTION_SIZE)
                         {
-                            belongsTo = true;
-                            break;
+                            csv.Add($"{row}{previousCommas}1{remainingCommas}");
                         }
                     }
-                    rowBuilder.Append($"{(belongsTo? 1 : 0)},");
+                    index++;
                 }
-
-                csv.Add(rowBuilder.ToString().TrimEnd(','));
             });
 
             string predictors = string.Join(",", labelGenerators.Where(x => x != TRUE_LABELS_KEY));
