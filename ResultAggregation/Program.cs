@@ -12,23 +12,38 @@ namespace SAoverED
     // This is written in C# as it will run way fater than a regular Python script
     class Program
     {
+        const string TRUE_LABELS_KEY = "OriginalDS";
+        const int NUM_THREADS = 8;
+        const int MINIMAL_INTERSECTION_SIZE = 2;
+        const string DATA_FOLDER = "Data";
+
         /// <summary>
-        /// Reads a multiple column headerless CSV
+        /// Reads a CSV with the first 2 columns being text and label
         /// </summary>
         /// <param name="fileName">The path to the CSV</param>
-        /// <returns>A list of rows</returns>
-        static List<List<string>> ReadMultipleColumnsCSV(string fileName)
+        /// <returns>Each row with itsPolarity</returns>
+        static Dictionary<string, int> ReadMultipleColumnsCSV(string fileName,
+            bool dropHeader = true)
         {
-            List<List<string>> toReturn = new List<List<string>>();
+            Dictionary<string, int> toReturn = new Dictionary<string, int>();
 
             using (var reader = new StreamReader(fileName))
             {
                 while (!reader.EndOfStream)
                 {
                     var line = reader.ReadLine();
+                    if (dropHeader)
+                    {
+                        dropHeader = false;
+                        continue;
+                    }
                     var values = line.Split(',');
 
-                    toReturn.Add(new List<string> { values[1], values[2] });
+                    try
+                    {
+                        toReturn.Add(values[0], Convert.ToInt32(values[1]) );
+                    }
+                    catch { };
                 }
             }
 
@@ -40,9 +55,11 @@ namespace SAoverED
         /// </summary>
         /// <param name="fileName">The path to the CSV</param>
         /// <returns>The content of the CSV</returns>
-        static List<string> ReadSingleColumnCSV(string fileName)
+        static List<(string, List<string>)> ReadSingleColumnCSV(string fileName,
+            bool dropHeader = true)
         {
-            List<string> toReturn = new List<string>();
+            List<(string, List<string>)> toReturn =
+                new List<(string, List<string>)>();
 
             using (var reader = new StreamReader(fileName))
             {
@@ -50,312 +67,222 @@ namespace SAoverED
                 {
                     var line = reader.ReadLine();
 
-                    toReturn.Add(line);
+                    toReturn.Add((line, line.Split().Distinct().ToList()));
+                }
+            }
+            return dropHeader ? toReturn.Skip(1).ToList() : toReturn;
+        }
+
+        static (Dictionary<string, List<(string, List<string>)>>,
+                Dictionary<string, Dictionary<string, int>>) ReadData(Dictionary<string, string> filesForTopics,
+            Dictionary<string, string> filesForLabels)
+        {
+            Console.WriteLine("Loading Topics...");
+            Dictionary<string, List<(string, List<string>)>> topics =
+                new Dictionary<string, List<(string, List<string>)>>();
+            foreach (var item in filesForTopics)
+            {
+                string methodName = item.Key;
+                string filePath = item.Value;
+
+                topics[methodName] = ReadSingleColumnCSV(filePath);
+            }
+            Console.WriteLine($"Loaded {topics.Keys.Count} Sets with about {topics.First().Value.Count} each!");
+
+            Console.WriteLine("Loading Predictions...");
+            Dictionary<string, Dictionary<string, int>> predictions =
+                new Dictionary<string, Dictionary<string, int>>();
+            foreach (var item in filesForLabels)
+            {
+                string methodName = item.Key;
+                string filePath = item.Value;
+
+                predictions[methodName] = ReadMultipleColumnsCSV(filePath);
+            }
+            Console.WriteLine($"Loaded {predictions.Keys.Count} Sets with about {predictions.First().Value.Count} each!");
+
+            Console.WriteLine("Loaded  Data");
+
+            return (topics, predictions);
+        }
+
+        static void RunAggregators(Dictionary<string, string> filesForTopics,
+            Dictionary<string, string> filesForLabels)
+        {
+            ThreadPool.SetMinThreads(NUM_THREADS - 1, 1);
+
+            (Dictionary<string, List<(string, List<string>)>> topics,
+                Dictionary<string, Dictionary<string, int>> predictions) = ReadData(filesForTopics, filesForLabels);
+
+            Console.WriteLine("Running Initial Setup...");
+            Dictionary<string, int> trueLabels = predictions[TRUE_LABELS_KEY];
+            Dictionary<string, List<string>> trueSets = trueLabels.Keys
+                .ToDictionary(key => key, value => value.Split().Distinct().ToList());
+
+            List<string> topicGenerators = filesForTopics.Keys.ToList();
+            List<string> labelGenerators = filesForLabels.Keys.ToList();
+
+            Dictionary<(string, string), ConcurrentDictionary<string, int>> scores =
+                new Dictionary<(string, string), ConcurrentDictionary<string, int>>();
+
+            Console.WriteLine("Aggregating...");
+            foreach (string topicGen in topicGenerators)
+            {
+                foreach (string labelGen in labelGenerators)
+                {                        
+                    ConcurrentDictionary<string, int> score =
+                        new ConcurrentDictionary<string, int>();
+                    Console.WriteLine($"Running \"{topicGen}\" X \"{labelGen}\"...");
+
+                    foreach ((string topic, List<string> set) x in topics[topicGen])
+                    {
+                        Parallel.ForEach(predictions[labelGen], (item) =>
+                        {
+                            try
+                            {
+                                string topic = item.Key;
+                                int label = item.Value;
+                                int valueSign = label == 1 ? 1 : -1;
+                                List<string> topicSet = trueSets[topic];
+
+                                if (x.set.Intersect(topicSet).Count() >=
+                                MINIMAL_INTERSECTION_SIZE)
+                                {
+                                    if (score.TryGetValue(topic, out int currentScore))
+                                    {
+                                        score.TryUpdate(topic, currentScore + valueSign, currentScore);
+                                    }
+                                    else
+                                    {
+                                        score.TryAdd(topic, valueSign);
+                                    }
+                                }
+                            }
+                            catch { }
+                        });
+                    }
+
+                    scores[(topicGen, labelGen)] = score;
+                    Console.WriteLine($"DONE \"{topicGen}\" X \"{labelGen}\"...");
+
                 }
             }
 
-            return toReturn;
+            Console.WriteLine("Writing results...");
+
+            var csv = new StringBuilder();
+            csv.AppendLine("TOPIC_GEN,LABEL_GEN,TOPIC,LABEL");
+
+            foreach(var x in scores)
+            {
+                (string topicGen, string labelGen) = x.Key;
+
+                foreach(var y in x.Value)
+                {
+                    string topic = y.Key;
+                    int label = y.Value > 0 ? 1 : 0;
+
+                    csv.AppendLine($"{topicGen},{labelGen},{topic},{label}");
+                }
+            }
+            File.WriteAllText("Aggregated.csv", csv.ToString());
+            Console.WriteLine("Done!");
+        }
+
+        static void GetTopicDS(Dictionary<string, string> filesForTopics,
+            Dictionary<string, string> filesForLabels)
+        {
+            ThreadPool.SetMinThreads(NUM_THREADS - 1, 1);
+
+            (Dictionary<string, List<(string, List<string>)>> topics,
+                Dictionary<string, Dictionary<string, int>> predictions) = ReadData(filesForTopics, filesForLabels);
+
+            Console.WriteLine("Running Initial Setup...");
+            Dictionary<string, int> trueLabels = predictions[TRUE_LABELS_KEY];
+            Dictionary<string, List<string>> trueSets = trueLabels.Keys
+                .ToDictionary(key => key, value => value.Split().Distinct().ToList());
+            List<string> topicGenerators = filesForTopics.Keys.ToList();
+            List<string> labelGenerators = filesForLabels.Keys.ToList();
+            List<string> otherGenerators = labelGenerators
+                .Where(x => x != TRUE_LABELS_KEY)
+                .ToList();
+
+            Console.WriteLine("Aggregating...");
+
+            ConcurrentBag<string> csv = new ConcurrentBag<string>();
+            Parallel.ForEach(trueLabels, (x) =>
+            {
+                string topic = x.Key;
+                int label = x.Value;
+                StringBuilder rowBuilder = new StringBuilder($"{topic},{label},");
+                List<string> topicSet = trueSets[topic];
+
+                foreach (string labelGen in otherGenerators)
+                {
+                    rowBuilder.Append($"{predictions[labelGen][topic]},");
+                }
+
+                foreach (string topicGen in topicGenerators)
+                {
+                    bool belongsTo = false;
+                    foreach ((string topic, List<string> set) y in topics[topicGen])
+                    {
+                        if (y.set.Intersect(topicSet).Count() >=
+                    MINIMAL_INTERSECTION_SIZE)
+                        {
+                            belongsTo = true;
+                            break;
+                        }
+                    }
+                    rowBuilder.Append($"{(belongsTo? 1 : 0)},");
+                }
+
+                csv.Add(rowBuilder.ToString().TrimEnd(','));
+            });
+
+            string predictors = string.Join(",", labelGenerators.Where(x => x != TRUE_LABELS_KEY));
+            string labelers = string.Join(",", topicGenerators.Select(x => $"Is{x}"));
+            File.WriteAllText("AggregatedDS.csv", $"Text,Label,{predictors},{labelers}{Environment.NewLine}");
+            File.AppendAllLines("AggregatedDS.csv", csv);
+
+            Console.WriteLine("Done!");
+        }
+
+        static void AggregationConfiguration()
+        {
+            RunAggregators(filesForTopics: new Dictionary<string, string>{
+                {"MABED", Path.Combine(DATA_FOLDER, "MABED.csv") },
+                {"OLDA", Path.Combine(DATA_FOLDER, "OLDA.csv") },
+                {"PeakyTopics", Path.Combine(DATA_FOLDER, "PeakyResults.csv")}
+            }, filesForLabels: new Dictionary<string, string>
+            {
+                { TRUE_LABELS_KEY, Path.Combine(DATA_FOLDER, "[Clean][FE]S140C3.csv")},
+                { "Bert", Path.Combine(DATA_FOLDER, "[bert][Clean][FE]S140C3.csv")},
+                { "RoBERTa", Path.Combine(DATA_FOLDER, "[roberta][Clean][FE]S140C3.csv")},
+                { "XLMRoBERTa", Path.Combine(DATA_FOLDER, "[xlmroberta][Clean][FE]S140C3.csv")}
+            }
+            );
+        }
+
+        static void TopicConfiguration()
+        {
+            GetTopicDS(filesForTopics: new Dictionary<string, string>{
+                {"MABED", Path.Combine(DATA_FOLDER, "MABED.csv") },
+                {"OLDA", Path.Combine(DATA_FOLDER, "OLDA.csv") },
+                {"PeakyTopics", Path.Combine(DATA_FOLDER, "PeakyResults.csv")}
+            }, filesForLabels: new Dictionary<string, string>
+            {
+                { TRUE_LABELS_KEY, Path.Combine(DATA_FOLDER, "[Clean][FE]S140C3.csv")},
+                { "Bert", Path.Combine(DATA_FOLDER, "[bert][Clean][FE]S140C3.csv")},
+                { "RoBERTa", Path.Combine(DATA_FOLDER, "[roberta][Clean][FE]S140C3.csv")},
+                { "XLMRoBERTa", Path.Combine(DATA_FOLDER, "[xlmroberta][Clean][FE]S140C3.csv")}
+            }
+            );
         }
 
         static void Main(string[] args)
         {
-            List<List<string>> predictedBySVM = new List<List<string>>();
-            List<List<string>> predictedByLR = new List<List<string>>();
-            List<List<string>> predictedByHumans = new List<List<string>>();
-
-            List<string> mabedTopics = new List<string>();
-            List<string> oldaTopics = new List<string>();
-
-            List<List<string>> MabedSets = new List<List<string>>();
-            List<List<string>> OldaSets = new List<List<string>>();
-
-            Parallel.Invoke(
-                () =>
-                {
-                    predictedBySVM = ReadMultipleColumnsCSV(Path.Combine("Datasets", "SVMPredictions.csv"));
-                },
-                () =>
-                {
-                    predictedByLR = ReadMultipleColumnsCSV(Path.Combine("Datasets", "LRPredictions.csv"));
-                },
-                () =>
-                {
-                    predictedByHumans = ReadMultipleColumnsCSV(Path.Combine("Datasets", "[SA]Sentiment140_CleanShave.csv"));
-                },
-                () =>
-                {
-                    mabedTopics = ReadSingleColumnCSV(Path.Combine("Datasets", "MABED_CLEAN.csv"));
-                    MabedSets = new List<List<string>>();
-
-                    foreach (string topic in mabedTopics)
-                    {
-                        MabedSets.Add(topic.Split().Distinct().ToList());
-                    }
-                },
-                () =>
-                {
-                    oldaTopics = ReadSingleColumnCSV(Path.Combine("Datasets", "OLDA_CLEAN.csv"));
-                    OldaSets = new List<List<string>>();
-
-                    foreach (string topic in oldaTopics)
-                    {
-                        OldaSets.Add(topic.Split().Distinct().ToList());
-                    }
-                }
-                );
-
-            int mabedLen = mabedTopics.Count;
-            int oldaLen = oldaTopics.Count;
-            Console.WriteLine("Loaded  Data");
-
-            ConcurrentDictionary<string, int> MabedSVMScores = new ConcurrentDictionary<string, int>();
-            ConcurrentDictionary<string, int> OLDASVMScores = new ConcurrentDictionary<string, int>();
-
-            ConcurrentDictionary<string, int> MabedLRScores = new ConcurrentDictionary<string, int>();
-            ConcurrentDictionary<string, int> OLDALRScores = new ConcurrentDictionary<string, int>();
-
-            ConcurrentDictionary<string, int> MabedTrueScores = new ConcurrentDictionary<string, int>();
-            ConcurrentDictionary<string, int> OLDATrueScores = new ConcurrentDictionary<string, int>();
-
-            ConcurrentDictionary<string, List<string>> MABEDLabels = new ConcurrentDictionary<string, List<string>>();
-            ConcurrentDictionary<string, List<string>> OLDALabels = new ConcurrentDictionary<string, List<string>>();
-
-            ThreadPool.SetMinThreads(12, 12);
-            Console.WriteLine("Running True Labels");
-
-            Parallel.ForEach(predictedByHumans, (currentRow) =>
-            {
-                // Text
-                List<string> unique = currentRow[0].Split().Distinct().ToList();
-
-                string tag = currentRow[1];
-
-                for (int i = 0; i < mabedLen; i++)
-                {
-                    if (unique.Intersect(MabedSets[i]).Count() > 1)
-                    {
-                        string key = mabedTopics[i];
-
-                        if (MabedTrueScores.TryGetValue(key, out int score))
-                        {
-                            MabedTrueScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            MabedTrueScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-
-                for (int i = 0; i < oldaLen; i++)
-                {
-                    if (unique.Intersect(OldaSets[i]).Count() > 1)
-                    {
-                        string key = oldaTopics[i];
-
-                        if (OLDATrueScores.TryGetValue(key, out int score))
-                        {
-                            OLDATrueScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            OLDATrueScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-            });
-            Parallel.ForEach(MabedTrueScores, (currentValue) =>
-            {
-                if (MABEDLabels.TryGetValue(currentValue.Key, out List<string> currentM))
-                {
-                    List<string> newValue = currentM.Select(x => x).ToList();
-                    newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                    MABEDLabels.TryUpdate(currentValue.Key, newValue, currentM);
-                }
-                else
-                {
-                    MABEDLabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-                }
-            });
-            Parallel.ForEach(OLDATrueScores, (currentValue) =>
-           {
-               if (OLDALabels.TryGetValue(currentValue.Key, out List<string> currentO))
-               {
-                   List<string> newValue = currentO.Select(x => x).ToList();
-                   newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                   OLDALabels.TryUpdate(currentValue.Key, newValue, currentO);
-               }
-               else
-               {
-                   OLDALabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-               }
-           });
-
-
-            Console.WriteLine("Running SVM Labels");
-
-            Parallel.ForEach(predictedBySVM, (currentRow) =>
-            {
-                // Text
-                List<string> unique = currentRow[0].Split().Distinct().ToList();
-
-                string tag = currentRow[1];
-
-                for (int i = 0; i < mabedLen; i++)
-                {
-                    if (unique.Intersect(MabedSets[i]).Count() > 1)
-                    {
-                        string key = mabedTopics[i];
-
-                        if (MabedSVMScores.TryGetValue(key, out int score))
-                        {
-                            MabedSVMScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            MabedSVMScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-
-                for (int i = 0; i < oldaLen; i++)
-                {
-                    if (unique.Intersect(OldaSets[i]).Count() > 1)
-                    {
-                        string key = oldaTopics[i];
-
-                        if (OLDASVMScores.TryGetValue(key, out int score))
-                        {
-                            OLDASVMScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            OLDASVMScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-            });
-            Parallel.ForEach(MabedSVMScores, (currentValue) =>
-            {
-                if (MABEDLabels.TryGetValue(currentValue.Key, out List<string> currentM))
-                {
-                    List<string> newValue = currentM.Select(x => x).ToList();
-                    newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                    MABEDLabels.TryUpdate(currentValue.Key, newValue, currentM);
-                }
-                else
-                {
-                    MABEDLabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-                }
-            });
-            Parallel.ForEach(OLDASVMScores, (currentValue) =>
-            {
-                if (OLDALabels.TryGetValue(currentValue.Key, out List<string> currentO))
-                {
-                    List<string> newValue = currentO.Select(x => x).ToList();
-                    newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                    OLDALabels.TryUpdate(currentValue.Key, newValue, currentO);
-                }
-                else
-                {
-                    OLDALabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-                }
-            });
-
-            Console.WriteLine("Running LR Labels");
-
-            Parallel.ForEach(predictedByLR, (currentRow) =>
-            {
-                // Text
-                List<string> unique = currentRow[0].Split().Distinct().ToList();
-
-                string tag = currentRow[1];
-
-                for (int i = 0; i < mabedLen; i++)
-                {
-                    if (unique.Intersect(MabedSets[i]).Count() > 1)
-                    {
-                        string key = mabedTopics[i];
-
-                        if (MabedLRScores.TryGetValue(key, out int score))
-                        {
-                            MabedLRScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            MabedLRScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-
-                for (int i = 0; i < oldaLen; i++)
-                {
-                    if (unique.Intersect(OldaSets[i]).Count() > 1)
-                    {
-                        string key = oldaTopics[i];
-
-                        if (OLDALRScores.TryGetValue(key, out int score))
-                        {
-                            OLDALRScores.TryUpdate(key, score + ((tag == "1") ? 1 : -1), score);
-                        }
-                        else
-                        {
-                            OLDALRScores.TryAdd(key, (tag == "1") ? 1 : -1);
-                        }
-                    }
-                }
-            });
-            Parallel.ForEach(MabedLRScores, (currentValue) =>
-            {
-                if (MABEDLabels.TryGetValue(currentValue.Key, out List<string> currentM))
-                {
-                    List<string> newValue = currentM.Select(x => x).ToList();
-                    newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                    MABEDLabels.TryUpdate(currentValue.Key, newValue, currentM);
-                }
-                else
-                {
-                    MABEDLabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-                }
-            });
-            Parallel.ForEach(OLDALRScores, (currentValue) =>
-            {
-                if (OLDALabels.TryGetValue(currentValue.Key, out List<string> currentO))
-                {
-                    List<string> newValue = currentO.Select(x => x).ToList();
-                    newValue.Add((currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE");
-
-                    OLDALabels.TryUpdate(currentValue.Key, newValue, currentO);
-                }
-                else
-                {
-                    OLDALabels.TryAdd(currentValue.Key, new List<string> { (currentValue.Value > 0) ? "POSITIVE" : "NEGATIVE" });
-                }
-            });
-            Console.WriteLine("Writing results...");
-
-            var csv = new StringBuilder();
-            csv.AppendLine("TOPIC,TRUE,SVM,LR");
-
-            foreach ((string topic, List<string> labels) in MABEDLabels)
-            {
-                csv.AppendLine($"{topic},{string.Join(",", labels)}");
-            }
-            File.WriteAllText("MABEDResults.csv", csv.ToString());
-
-            csv.Clear();
-            csv.AppendLine("TOPIC,TRUE,SVM,LR");
-
-            foreach ((string topic, List<string> labels) in OLDALabels)
-            {
-                csv.AppendLine($"{topic},{string.Join(",", labels)}");
-            }
-            File.WriteAllText("OLDAesults.csv", csv.ToString());
+            TopicConfiguration();
         }
     }
 }
